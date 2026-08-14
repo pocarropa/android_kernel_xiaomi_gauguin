@@ -113,8 +113,8 @@ jobs:
           '; } # end properties
 
           # install
-          block=/dev/block/bootdevice/by-name/boot;
-          is_slot_device=0;
+          block=boot;
+          is_slot_device=1;
           ramdisk_compression=auto;
           patch_vbmeta_flag=auto;
 
