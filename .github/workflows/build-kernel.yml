@@ -51,6 +51,15 @@ jobs:
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
           mkdir -p out
+
+          # Config oficial de LineageOS para gauguin
+          scripts/kconfig/merge_config.sh -m -O out \
+            arch/arm64/configs/vendor/lito-perf_defconfig \
+            arch/arm64/configs/vendor/xiaomi/gauguin.config
+
+          make O=out ARCH=arm64 CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- olddefconfig
+
+          mkdir -p out
           scripts/kconfig/merge_config.sh -m -O out \
             arch/arm64/configs/vendor/bengal-perf_defconfig \
             arch/arm64/configs/vendor/xiaomi/gauguin.config
