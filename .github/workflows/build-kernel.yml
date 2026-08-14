@@ -70,6 +70,13 @@ jobs:
           export OBJDUMP=llvm-objdump
           export STRIP=llvm-strip
 
+          # Compilamos Image.gz-dtb y también dtbo.img (si el árbol lo genera)
+          make -j$(nproc) O=out ARCH=arm64 CC=clang LD=ld.lld \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump STRIP=llvm-strip \
+            KCFLAGS="-Wno-error=undef" \
+            Image.gz-dtb dtbo.img 2>&1 | tee build.log || \
           make -j$(nproc) O=out ARCH=arm64 CC=clang LD=ld.lld \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy \
@@ -82,7 +89,6 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           cd AnyKernel3
 
-          # Configuración para gauguin (compatible con Lineage Recovery)
           cat > anykernel.sh << 'EOF'
           ### AnyKernel3 Ramdisk Mod Script
           ## osm0sis @ xda-developers
@@ -112,21 +118,25 @@ jobs:
           ramdisk_compression=auto;
           patch_vbmeta_flag=auto;
 
-          # reset for boot image patching
           . tools/ak3-core.sh;
 
           ## boot install
           dump_boot;
           write_boot;
           ## end boot install
+
+          ## dtbo install (solo si existe dtbo.img)
+          if [ -f $home/dtbo.img ]; then
+            flash_dtbo;
+          fi
+          ## end dtbo install
           EOF
 
-          # Limpiar archivos innecesarios
           rm -rf .git README.md LICENSE
 
       - name: Package AnyKernel3 zip
         run: |
-          # Copiar la imagen del kernel
+          # Copiar imagen del kernel
           if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
             cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f out/arch/arm64/boot/Image.gz ]; then
@@ -134,11 +144,18 @@ jobs:
           elif [ -f out/arch/arm64/boot/Image ]; then
             cp out/arch/arm64/boot/Image AnyKernel3/
           else
-            echo "No se encontró ninguna imagen del kernel"
+            echo "ERROR: No se encontró ninguna imagen del kernel"
             exit 1
           fi
 
-          # Crear el ZIP
+          # Copiar dtbo.img si existe (no falla si no está)
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img AnyKernel3/
+            echo "dtbo.img incluido"
+          else
+            echo "No se generó dtbo.img (se omite, es normal en muchos builds)"
+          fi
+
           cd AnyKernel3
           zip -r9 ../Gauguin-Kernel-$(date +%Y%m%d-%H%M).zip * -x "*.git*" "*README*" "*LICENSE*"
           cd ..
@@ -158,6 +175,7 @@ jobs:
           name: kernel-image
           path: |
             out/arch/arm64/boot/Image*
+            out/arch/arm64/boot/dtbo.img
             out/arch/arm64/boot/dts/**/*.dtb
           if-no-files-found: warn
 
