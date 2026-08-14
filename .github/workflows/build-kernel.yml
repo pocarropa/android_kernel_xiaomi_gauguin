@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120          # evita que se cuelgue indefinidamente
+    timeout-minutes: 120
 
     steps:
       - name: Checkout kernel source
@@ -19,7 +19,7 @@ jobs:
             bc bison flex libssl-dev libncurses-dev \
             libelf-dev dwarves device-tree-compiler python3 \
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            cpio rsync wget xz-utils
+            cpio rsync wget xz-utils zip
 
       - name: Download Clang prebuilt (r547379)
         run: |
@@ -29,9 +29,6 @@ jobs:
           mkdir -p clang-r547379
           tar -xzf clang.tar.gz -C clang-r547379
           rm clang.tar.gz
-          # Verificar que existe el binario
-          ls -la clang-r547379/bin/clang
-          ls -la clang-r547379/bin/ld.lld || true
 
       - name: Download GCC prebuilt (4.9)
         run: |
@@ -51,24 +48,11 @@ jobs:
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
           mkdir -p out
-
-          # Config oficial de LineageOS para gauguin
           scripts/kconfig/merge_config.sh -m -O out \
             arch/arm64/configs/vendor/lito-perf_defconfig \
             arch/arm64/configs/vendor/xiaomi/gauguin.config
-
           make O=out ARCH=arm64 CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- olddefconfig
 
-          mkdir -p out
-          scripts/kconfig/merge_config.sh -m -O out \
-            arch/arm64/configs/vendor/bengal-perf_defconfig \
-            arch/arm64/configs/vendor/xiaomi/gauguin.config
-
-          # Desactivar el driver conflictivo nt36xxx (dejamos nt36672c)
-          ./scripts/config --file out/.config -d TOUCHSCREEN_NT36XXX
-          ./scripts/config --file out/.config -d TOUCHSCREEN_NT36XXX_SPI 2>/dev/null || true
-
-          make O=out ARCH=arm64 CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- olddefconfig
       - name: Build kernel
         run: |
           set -eo pipefail
@@ -93,6 +77,73 @@ jobs:
             KCFLAGS="-Wno-error=undef" \
             Image.gz-dtb 2>&1 | tee build.log
 
+      - name: Prepare AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          cd AnyKernel3
+
+          # Configuración para gauguin (compatible con Lineage Recovery)
+          cat > anykernel.sh << 'EOF'
+          ### AnyKernel3 Ramdisk Mod Script
+          ## osm0sis @ xda-developers
+
+          ### AnyKernel setup
+          # begin properties
+          properties() { '
+          kernel.string=Gauguin Kernel (LineageOS based)
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=gauguin
+          device.name2=gauguinpro
+          device.name3=gauguininpro
+          device.name4=
+          device.name5=
+          supported.versions=
+          supported.patchlevels=
+          supported.vendorpatchlevels=
+          '; } # end properties
+
+          # install
+          block=/dev/block/bootdevice/by-name/boot;
+          is_slot_device=0;
+          ramdisk_compression=auto;
+          patch_vbmeta_flag=auto;
+
+          # reset for boot image patching
+          . tools/ak3-core.sh;
+
+          ## boot install
+          dump_boot;
+          write_boot;
+          ## end boot install
+          EOF
+
+          # Limpiar archivos innecesarios
+          rm -rf .git README.md LICENSE
+
+      - name: Package AnyKernel3 zip
+        run: |
+          # Copiar la imagen del kernel
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/
+          elif [ -f out/arch/arm64/boot/Image ]; then
+            cp out/arch/arm64/boot/Image AnyKernel3/
+          else
+            echo "No se encontró ninguna imagen del kernel"
+            exit 1
+          fi
+
+          # Crear el ZIP
+          cd AnyKernel3
+          zip -r9 ../Gauguin-Kernel-$(date +%Y%m%d-%H%M).zip * -x "*.git*" "*README*" "*LICENSE*"
+          cd ..
+          ls -lh Gauguin-Kernel-*.zip
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -101,11 +152,17 @@ jobs:
           path: build.log
           if-no-files-found: ignore
 
-      - name: Upload kernel image
+      - name: Upload kernel image (raw)
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-gauguin
+          name: kernel-image
           path: |
             out/arch/arm64/boot/Image*
             out/arch/arm64/boot/dts/**/*.dtb
           if-no-files-found: warn
+
+      - name: Upload AnyKernel3 zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gauguin-Kernel-AnyKernel3
+          path: Gauguin-Kernel-*.zip
