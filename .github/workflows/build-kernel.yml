@@ -54,8 +54,12 @@ jobs:
           scripts/kconfig/merge_config.sh -m -O out \
             arch/arm64/configs/vendor/bengal-perf_defconfig \
             arch/arm64/configs/vendor/xiaomi/gauguin.config
-          make O=out ARCH=arm64 CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- olddefconfig
 
+          # Desactivar el driver conflictivo nt36xxx (dejamos nt36672c)
+          ./scripts/config --file out/.config -d TOUCHSCREEN_NT36XXX
+          ./scripts/config --file out/.config -d TOUCHSCREEN_NT36XXX_SPI 2>/dev/null || true
+
+          make O=out ARCH=arm64 CC=clang LD=ld.lld CLANG_TRIPLE=aarch64-linux-gnu- olddefconfig
       - name: Build kernel
         run: |
           set -eo pipefail
