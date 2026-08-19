@@ -1,4 +1,4 @@
-name: Build Gauguin Kernel (LOS 23.2 compatible)
+name: Build gauguin kernel
 
 on:
   workflow_dispatch:
@@ -70,13 +70,19 @@ jobs:
           export OBJDUMP=llvm-objdump
           export STRIP=llvm-strip
 
-          # Compatible con LOS 23.2: Image (sin comprimir) + dtbo.img separado
+          # Compilamos Image.gz-dtb y también dtbo.img (si el árbol lo genera)
           make -j$(nproc) O=out ARCH=arm64 CC=clang LD=ld.lld \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump STRIP=llvm-strip \
             KCFLAGS="-Wno-error=undef" \
-            Image dtbo.img 2>&1 | tee build.log
+            Image.gz-dtb dtbo.img 2>&1 | tee build.log || \
+          make -j$(nproc) O=out ARCH=arm64 CC=clang LD=ld.lld \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump STRIP=llvm-strip \
+            KCFLAGS="-Wno-error=undef" \
+            Image.gz-dtb 2>&1 | tee build.log
 
       - name: Prepare AnyKernel3
         run: |
@@ -93,7 +99,7 @@ jobs:
           kernel.string=Gauguin Kernel (LineageOS based)
           do.devicecheck=1
           do.modules=0
-          do.systemless=0
+          do.systemless=1
           do.cleanup=1
           do.cleanuponabort=0
           device.name1=gauguin
@@ -106,54 +112,55 @@ jobs:
           supported.vendorpatchlevels=
           '; } # end properties
 
-          # shell variables (basado en Talesweaver que flashea sin error)
+          # install
           block=/dev/block/bootdevice/by-name/boot;
           is_slot_device=0;
           ramdisk_compression=auto;
           patch_vbmeta_flag=auto;
 
-          ## AnyKernel methods (DO NOT CHANGE)
           . tools/ak3-core.sh;
 
-          ## AnyKernel file attributes
-          set_perm_recursive 0 0 755 644 $ramdisk/*;
-          set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
-
-          ## AnyKernel install
+          ## boot install
           dump_boot;
+          patch_cmdline "skip_initramfs" "want_initramfs";
           write_boot;
-          ## end install
+          ## end boot install
 
-          ## dtbo (separado, como en LOS 23.2)
+          ## dtbo install (solo si existe dtbo.img)
           if [ -f $home/dtbo.img ]; then
             flash_dtbo;
           fi
+          ## end dtbo install
           EOF
 
           rm -rf .git README.md LICENSE
 
       - name: Package AnyKernel3 zip
         run: |
-          if [ -f out/arch/arm64/boot/Image ]; then
+          # Copiar imagen del kernel
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/
+          elif [ -f out/arch/arm64/boot/Image ]; then
             cp out/arch/arm64/boot/Image AnyKernel3/
-            echo "Image incluido ($(du -h out/arch/arm64/boot/Image | cut -f1))"
           else
-            echo "ERROR: No se encontró Image"
-            ls -la out/arch/arm64/boot/
+            echo "ERROR: No se encontró ninguna imagen del kernel"
             exit 1
           fi
 
+          # Copiar dtbo.img si existe (no falla si no está)
           if [ -f out/arch/arm64/boot/dtbo.img ]; then
             cp out/arch/arm64/boot/dtbo.img AnyKernel3/
             echo "dtbo.img incluido"
           else
-            echo "No se generó dtbo.img (se omite)"
+            echo "No se generó dtbo.img (se omite, es normal en muchos builds)"
           fi
 
           cd AnyKernel3
-          zip -r9 ../Gauguin-Kernel-LOS23.2-$(date +%Y%m%d-%H%M).zip * -x "*.git*" "*README*" "*LICENSE*"
+          zip -r9 ../Gauguin-Kernel-$(date +%Y%m%d-%H%M).zip * -x "*.git*" "*README*" "*LICENSE*"
           cd ..
-          ls -lh Gauguin-Kernel-LOS23.2-*.zip
+          ls -lh Gauguin-Kernel-*.zip
 
       - name: Upload build log
         if: always()
@@ -168,7 +175,7 @@ jobs:
         with:
           name: kernel-image
           path: |
-            out/arch/arm64/boot/Image
+            out/arch/arm64/boot/Image*
             out/arch/arm64/boot/dtbo.img
             out/arch/arm64/boot/dts/**/*.dtb
           if-no-files-found: warn
@@ -177,4 +184,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Gauguin-Kernel-AnyKernel3
-          path: Gauguin-Kernel-LOS23.2-*.zip
+          path: Gauguin-Kernel-*.zip
