@@ -89,6 +89,10 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           cd AnyKernel3
 
+          # DEBUG temporal: mostrar BLOCK/target/SLOT justo antes de abortar,
+          # para diagnosticar "unable to determine partition" en el flasheo real.
+          sed -i 's|abort "Unable to determine|ui_print "DEBUG target=[$target] BLOCK=[$BLOCK] SLOT=[$SLOT] IS_SLOT_DEVICE=[$IS_SLOT_DEVICE]"; abort "Unable to determine|' tools/ak3-core.sh
+
           cat > anykernel.sh << 'EOF'
           ### AnyKernel3 Ramdisk Mod Script
           ## osm0sis @ xda-developers
