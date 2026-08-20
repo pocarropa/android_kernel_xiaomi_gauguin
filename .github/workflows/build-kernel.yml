@@ -86,15 +86,7 @@ jobs:
 
       - name: Prepare AnyKernel3
         run: |
-          # Usamos una copia local (verificada) de AnyKernel3 en vez de clonar
-          # master, ya que la versión actual de osm0sis/AnyKernel3 falla al
-          # detectar la partición boot en este dispositivo (sin sufijo de slot).
-          mkdir -p AnyKernel3
-          cp -r anykernel-legacy/tools AnyKernel3/tools
-          mkdir -p AnyKernel3/META-INF/com/google/android
-          cp anykernel-legacy/META-INF/com/google/android/update-binary AnyKernel3/META-INF/com/google/android/update-binary
-          [ -f anykernel-legacy/LICENSE ] && cp anykernel-legacy/LICENSE AnyKernel3/LICENSE
-          chmod +x AnyKernel3/tools/busybox AnyKernel3/tools/magiskboot AnyKernel3/tools/magiskpolicy
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           cd AnyKernel3
 
           cat > anykernel.sh << 'EOF'
@@ -141,7 +133,7 @@ jobs:
           ## end dtbo install
           EOF
 
-          rm -f README.md
+          rm -rf .git README.md
 
       - name: Package AnyKernel3 zip
         run: |
