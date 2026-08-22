@@ -4872,7 +4872,14 @@ static int qg_parse_dt(struct qpnp_qg *chip)
 					"qcom,multi-profile-load");
 
 	// qg_dbg(chip, QG_DEBUG_PON, "DT: vbatt_empty_mv=%dmV vbatt_low_mv=%dmV delta_soc=%d ext-sns=%d\n",
-	chip->batterysecret_support = of_property_read_bool(node, "qcom,batterysecret-support");
+	/*
+	 * Forzado a false: la verificación de autenticidad de batería OEM
+	 * (chip 1-Wire Maxim DS28E) deja el SOC congelado con baterías
+	 * no-OEM, ya que la carga del perfil se queda reintentando la
+	 * autenticación (qg_batterysecret_load_profile_work) en vez de
+	 * caer directamente al perfil genérico por batt_id_ohm.
+	 */
+	chip->batterysecret_support = false;
 	chip->shutdown_delay_enable = of_property_read_bool(node, "qcom,shutdown-delay-enable");
 
 	size = 0;
